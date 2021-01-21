@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>LIMAC</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="mainStyle.css" />
+    <script type="text/javascript" src="lib/axios/dist/axios.standalone.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/rollups/hmac-sha256.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/rollups/sha256.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/components/hmac.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/components/enc-base64.js"></script>
+    <script type="text/javascript" src="lib/url-template/url-template.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/sigV4Client.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/apiGatewayClient.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/simpleHttpClient.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/utils.js"></script>
+    <script type="text/javascript" src="apigClient.js"></script>
+    <link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.min.css">
+    <script src="node_modules/socket.io-client/dist/socket.io.js"></script>
+    <script>
+        var socket_callee;
+        var io_callee = require('socket.io-client');
+    </script>
+</head>
+<script>
+    //Code segment for handling incoming calls.
+    var isCaller = false;
+    var friendList = '';
+    var userList = '<lh style="font-family: \'Franklin Gothic Medium\', \'Arial Narrow\', Arial, sans-serif;">Other LIMAC Users</lh>';
+
+
+    function endCall() {
+        if (isCaller) {
+            isCaller = false;
+            endVideoCaller();
+        }
+        else {
+            endVideoCallee();
+        }
+        document.getElementById('callButton').style.display = "none";
+        const remoteVideo = document.getElementById('remoteVideo');
+        remoteVideo.style.display = "none";
+        const localVideo = document.getElementById('localVideo');
+        localVideo.style.display = "none";
+        document.getElementById('profile').style.display = "block";
+        document.getElementById('graphic').style.display = "block";
+        var apigClient = apigClientFactory.newClient({
+            apiKey: 'API_KEY_FOR_AWS_LAMBDA',
+            region: 'LAMBDA_REGION'
+        });
+        var body = {
+            "callee": require('./session.json').username
+        }
+        apigClient.endcallPost({}, body, {})
+            .then(function (result) {
+                console.log("Call Ended");
+            }).catch(function (result) {
+                console.log(result);
+            });
+    }
+    function endVideoCallee() {
+        remoteVideo = document.getElementById('remoteVideo');
+        localVideo = document.getElementById('localVideo');
+
+        if (myPeerConnection) {
+            myPeerConnection.onicecandidate = null;
+            myPeerConnection.ontrack = null;
+            myPeerConnection.onremovetrack = null;
+            myPeerConnection.oniceconnectionstatechange = null;
+            myPeerConnection.onicegatheringstatechange = null;
+            myPeerConnection.onsignalingstatechange = null;
+            if (remoteVideo.srcObject) {
+                remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            if (localVideo.srcObject) {
+                localVideo.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            myPeerConnection.close();
+            myPeerConnection = null;
+        }
+        remoteVideo.removeAttribute("src");
+        remoteVideo.removeAttribute("srcObject");
+        localVideo.removeAttribute("src");
+        remoteVideo.removeAttribute("srcObject");
+    }
+
+    function endVideoCaller() {
+        remoteVideo = document.getElementById('remoteVideo');
+        localVideo = document.getElementById('localVideo');
+
+        if (myPeerConnection) {
+            myPeerConnection.onicecandidate = null;
+            myPeerConnection.ontrack = null;
+            myPeerConnection.onremovetrack = null;
+            myPeerConnection.onnegotiationneeded = null;
+            myPeerConnection.oniceconnectionstatechange = null;
+            myPeerConnection.onicegatheringstatechange = null;
+            myPeerConnection.onsignalingstatechange = null;
+            if (remoteVideo.srcObject) {
+                remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            if (localVideo.srcObject) {
+                localVideo.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            myPeerConnection.close();
+            myPeerConnection = null;
+        }
+        remoteVideo.removeAttribute("src");
+        remoteVideo.removeAttribute("srcObject");
+        localVideo.removeAttribute("src");
+        remoteVideo.removeAttribute("srcObject");
+    }
+    function UserClicked(value) {
+        console.log("call ", value);
+        makeCall(value);
+    }
+
+    function addClicked(value) {
+        username = require('./session.json').username;
+        friend = value;
+        var apigClient = apigClientFactory.newClient({
+            apiKey: 'API_KEY_FOR_AWS_LAMBDA',
+            region: 'LAMBDA_REGION'
+        });
+        var body = {
+            "username": username,
+            "friend": friend
+        }
+        apigClient.addfriendPost({}, body, {})
+            .then(function (result) {
+                response = JSON.parse(result.data.body);
+                if (response.result == "success") {
+                    loadFriends();
+                } else {
+                    //pass
+                }
+            }).catch(function (result) {
+                console.log(result);
+            });
+    }
+
+    var myPeerConnection;
+    var mediaConstraints = { audio: true, video: true };
+    function sendMessageCallee(data) {
+        console.log("send to srvr");
+        console.log("Channel= ", data[0]);
+        console.log("data = ", data[1])
+        socket_callee.emit(data[0], data[1]);
+    }
+    function createPeerConnectionCallee() {
+        turnConfig = require('./turnConfig.json');
+        const USERNAME = turnConfig.username
+        const PASSWORD = turnConfig.password
+        const PORT = turnConfig.port
+        const IP = turnConfig.ip
+
+        var config = { url: `turn:${IP}:${PORT}`, username: USERNAME, credential: PASSWORD, };
+        const configuration = { 'iceServers': [config] };
+        myPeerConnection = new RTCPeerConnection(configuration);
+        myPeerConnection.onicecandidate = handleICECandidateEventCallee;
+        myPeerConnection.ontrack = handleTrackEventCallee;
+        // myPeerConnection.onnegotiationneeded = handleNegotiationNeededEvent;
+        myPeerConnection.onremovetrack = handleRemoveTrackEventCallee;
+        myPeerConnection.oniceconnectionstatechange = handleICEConnectionStateChangeEventCallee;
+        myPeerConnection.onicegatheringstatechange = handleICEGatheringStateChangeEventCallee;
+        myPeerConnection.onsignalingstatechange = handleSignalingStateChangeEventCallee;
+        return myPeerConnection;
+    }
+    async function handleOfferCallee(message) {
+        console.log(message);
+        console.log("offer received");
+        await createPeerConnectionCallee();
+        var desc = new RTCSessionDescription(message);
+        myPeerConnection.setRemoteDescription(desc).then(function () {
+            return navigator.mediaDevices.getUserMedia(mediaConstraints);
+        }).then(function (stream) {
+            localStream = stream;
+            const videoBlock = document.getElementById('videoBlock');
+            videoBlock.style.display = "block";
+            const videoTag = document.getElementById('localVideo');
+            videoTag.style.display = "block";
+            document.getElementById('profile').style.display = "none";
+            document.querySelector('video#localVideo').srcObject = localStream;
+            document.getElementById('graphic').style.display = "none";
+            document.getElementById('callButton').style.display = "block";
+            const remoteVideo = document.getElementById('remoteVideo');
+            remoteVideo.style.display = "block";
+            localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
+        }).then(function () {
+            return myPeerConnection.createAnswer();
+        }).then(function (answer) {
+            return myPeerConnection.setLocalDescription(answer);
+        }).then(function () {
+            sendMessageCallee(["answer", myPeerConnection.localDescription]);
+            handleNewICECandidateMsgCallee();
+        }).catch(handleGetUserMediaError);
+    }
+    function handleICECandidateEventCallee(event) {
+        if (event.candidate) {
+            console.log("EVent: ", event);
+            // sendMessage({"channel":'icecandidatecallee',"data":event.candidate});
+            sendMessageCallee(["icecandidatecallee", event.candidate]);
+        }
+    }
+    function handleNewICECandidateMsgCallee() {
+        socket.on('icecandidateCaller', function (msg) {
+            console.log("from caller .......")
+            var candidate = new RTCIceCandidate(msg);
+            myPeerConnection.addIceCandidate(candidate).catch(function () {
+                console.log("Error1");
+            });
+        });
+    }
+    function handleTrackEventCallee(event) {
+        document.querySelector('video#remoteVideo').srcObject = event.streams[0];
+    }
+    function handleRemoveTrackEventCallee(event) {
+        //to be done
+    }
+    function handleICEConnectionStateChangeEventCallee(event) {
+        console.log("Event Closed");
+    }
+    function handleSignalingStateChangeEventCallee(event) {
+        switch (myPeerConnection.signalingState) {
+            case "closed":
+                console.log("closed");
+                break;
+        }
+    }
+    function handleICEGatheringStateChangeEventCallee(event) {
+        console.log("handle gathering state change");
+    }
+    function handleGetUserMediaErrorCallee(e) {
+        switch (e.name) {
+            case "NotFoundError":
+                console.log("Unable to open your call because no camera or microphone");
+                break;
+            case "SecurityError":
+            case "PermissionDeniedError":
+                break
+            default:
+                console.log("Error opening your camera and/or microphone ", e.message);
+                break;
+        }
+    }
+    const ipcRenderer = require('electron').ipcRenderer;
+    ipcRenderer.on('incomingDivert', function (event, callerIP) {
+        handleSocketCallee(callerIP);
+
+    });
+    function handleSocketCallee(callerIP) {
+        console.log(callerIP)
+        // socket_callee = io_callee.connect(`http://LAPTOP-JQN82GT4:8069/`);
+        socket_callee = io_callee.connect(`http://${callerIP}:80/`, { reconnect: true });
+        console.log(socket_callee);
+        console.log(`http://` + callerIP + `:8069/`);
+        socket_callee.on('message', function (message) {
+            console.log(message);
+            console.log("offer Received");
+            // createPeerConnection();
+            handleOfferCallee(message);
+        });
+        socket_callee.on('icecandidateCaller', function (msg) {
+            console.log("from caller .......")
+            var candidate = new RTCIceCandidate(msg);
+            myPeerConnection.addIceCandidate(candidate).catch(function () {
+                console.log("Error1");
+            });
+        });
+    }
+    async function playVideoFromCameraCallee() {
+        try {
+            const videoBlock = document.getElementById('videoBlock');
+            videoBlock.style.display = "block";
+            const videoTag = document.getElementById('localVideo');
+            videoTag.style.display = "block";
+            document.getElementById('profile').style.display = "none";
+            const constraints = { 'video': true, 'audio': true };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            const videoElement = document.querySelector('video#localVideo');
+            videoElement.srcObject = stream;
+        } catch (error) {
+            console.error('Error opening video camera.', error);
+        }
+    }
+    async function stopPlaybackCallee() {
+        const videoElement = document.querySelector('video#localVideo');
+        videoElement.srcObject.getTracks().forEach(track => track.stop());
+        const videoBlock = document.getElementById('videoBlock');
+        videoBlock.style.display = "none";
+        const videoTag = document.getElementById('localVideo');
+        videoTag.style.display = "none";
+        document.getElementById('profile').style.display = "block";
+    }
+
+
+    // Code Segment for making a call.
+
+    function loadFriends() {
+        friendList = '';
+        userList = '<lh style="font-family: \'Franklin Gothic Medium\', \'Arial Narrow\', Arial, sans-serif;">&nbsp;&nbsp;Other LIMAC Users:</lh>';
+        username = require('./session.json').username
+        console.log(username, " this");
+        var apigClient = apigClientFactory.newClient({
+            apiKey: 'API_KEY_FOR_AWS_LAMBDA',
+            region: 'LAMBDA_REGION'
+        });
+        var body = {
+            "username": username
+        }
+        apigClient.findfriendPost({}, body, {})
+            .then(function (result) {
+                data = JSON.parse(result.data.body);
+                if (data.message.length != 0) {
+                    data.message.forEach(element => {
+                        userList += '<li><a href="#"><strong><b>' + element.toUpperCase() + `</strong></b><button value=${element} onClick="UserClicked(value)" style="border:none;outline:none;background-color:aliceblue;height=9px;width:9px;align:right;"><img src='start_call.png'/></button>` + `<button value=${element} style= "outline:none;background-color:lightgreen;align:right;border:none;margin-left:70px;display: inline-block;width:fit-content;height:fit-content;border-radius:10px;text-align: center;font-size:x-small;" onClick = "addClicked(value)"><b>ADD<strong>&nbsp;+</strong></b></button> ` + '</a></li>'
+                    });
+                } else {
+                    //pass
+                }
+            }).catch(function (result) {
+                console.log(result);
+            });
+        apigClient.listfriendsPost({}, body, {})
+            .then(function (result) {
+                data = JSON.parse(result.data.body);
+                if (data.message.length != 0) {
+                    data.message.forEach(element => {
+                        friendList += '<li><a href="#"><strong><b>' + element.toUpperCase() + `</strong></b><button value=${element} onClick="UserClicked(value)" style="border:none;outline:none;background-color:aliceblue;height=9px;width:9px;align:right;"><img src='start_call.png'/></button>` + '</a></li>'
+                    });
+                    // document.getElementById('contactList').style.height = "400px";
+                    document.getElementById('contactList').innerHTML = friendList;
+                } else {
+                    //pass
+                }
+            }).catch(function (result) {
+                console.log(result);
+            });
+    }
+
+    var io;
+    var myPeerConnection;
+    function checkMode() {
+        loadFriends();
+        var config = require('./global.json');
+        var mode = config["mode"];
+        if (mode == 1) {
+            document.getElementById('mode').checked = true;
+            var elements = document.getElementsByClassName('flex-container-row');
+            for (var i = 0; i < elements.length; i++) {
+                elements[i].style.backgroundColor = "black";
+            }
+            elements = document.getElementsByClassName('flex-container-col');
+            for (var i = 0; i < elements.length; i++) {
+                elements[i].style.backgroundColor = "black";
+            }
+        }
+    }
+    async function playVideoFromCamera() {
+        try {
+            const videoBlock = document.getElementById('videoBlock');
+            videoBlock.style.display = "block";
+            const videoTag = document.getElementById('localVideo');
+            videoTag.style.display = "block";
+            document.getElementById('profile').style.display = "none";
+        } catch (error) {
+            console.log(error);
+            console.error('Error opening video camera.', error);
+        }
+    }
+    async function stopPlayback() {
+        const videoElement = document.querySelector('video#localVideo');
+        videoElement.srcObject.getTracks().forEach(track => track.stop());
+        const videoBlock = document.getElementById('videoBlock');
+        videoBlock.style.display = "none";
+        const videoTag = document.getElementById('localVideo');
+        videoTag.style.display = "none";
+        document.getElementById('profile').style.display = "block";
+    }
+    async function searchFriend() {
+        // Declare variables
+        var input, filter, ul, li, a, i, txtValue;
+        input = document.getElementById('search');
+        filter = input.value.toUpperCase();
+        if (filter.length >= 1) {
+            document.getElementById('contactList').style.height = "200px";
+            document.getElementById('userList').style.display = "block";
+            document.getElementById('userList').style.height = "200px";
+            document.getElementById('userList').style.overflow = "hidden";
+            document.getElementById('userList').style.overflowY = "scroll";
+            document.getElementById('userList').innerHTML = userList;
+
+            ul = document.getElementById("contactList");
+            li = ul.getElementsByTagName('li');
+
+            // Loop through all list items, and hide those who don't match the search query
+            for (i = 0; i < li.length; i++) {
+                a = li[i].getElementsByTagName("a")[0];
+                txtValue = a.textContent || a.innerText;
+                if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                    li[i].style.display = "";
+                } else {
+                    li[i].style.display = "none";
+                }
+            }
+
+
+            ul_user = document.getElementById("userList");
+            li_user = ul_user.getElementsByTagName('li');
+
+            // Loop through all list items, and hide those who don't match the search query
+            for (i = 0; i < li_user.length; i++) {
+                a = li_user[i].getElementsByTagName("a")[0];
+                txtValue = a.textContent || a.innerText;
+                if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                    li_user[i].style.display = "";
+                } else {
+                    li_user[i].style.display = "none";
+                }
+            }
+
+
+        }
+        else {
+            document.getElementById('contactList').style.height = "400px";
+            document.getElementById('userList').style.display = "none";
+            document.getElementById('userList').style.height = "400px";
+            document.getElementById('contactList').innerHTML = friendList;
+        }
+    }
+    function changeMode() {
+        var config = require('./global.json');
+        var mode = config["mode"];
+        const fs = require('fs');
+        if (mode == 0) {
+            var elements = document.getElementsByClassName('flex-container-row');
+            for (var i = 0; i < elements.length; i++) {
+                if (elements[i].id == "search" || elements[i].id == "callBackground" || elements[i].id == "toggleBackground" || elements[i].id == "sideBackground" || elements[i].id == "callButton")
+                    elements[i].style.backgroundColor = "black";
+            }
+            elements = document.getElementsByClassName('flex-container-col');
+            for (var i = 0; i < elements.length; i++) {
+                if (elements[i].id == "search" || elements[i].id == "callBackground" || elements[i].id == "toggleBackground" || elements[i].id == "sideBackground" || elements[i].id == "callButton")
+                    elements[i].style.backgroundColor = "black";
+            }
+            config["mode"] = 1;
+            fs.writeFileSync("global.json", JSON.stringify(config));
+        }
+        if (mode == 1) {
+            var elements = document.getElementsByClassName('flex-container-row');
+            for (var i = 0; i < elements.length; i++) {
+                if (elements[i].id == "search" || elements[i].id == "sideBackground")
+                    elements[i].style.backgroundColor = '#4682B4';
+                if (elements[i].id == "callBackground" || elements[i].id == "toggleBackground" || elements[i].id == "callButton")
+                    elements[i].style.backgroundColor = 'aliceblue';
+            }
+            elements = document.getElementsByClassName('flex-container-col');
+            for (var i = 0; i < elements.length; i++) {
+                if (elements[i].id == "search" || elements[i].id == "callBackground" || elements[i].id == "sideBackground")
+                    elements[i].style.backgroundColor = '#4682B4';
+                if (elements[i].id == "callBackground" || elements[i].id == "toggleBackground" || elements[i].id == "callButton")
+                    elements[i].style.backgroundColor = 'aliceblue';
+            }
+            config["mode"] = 0;
+            fs.writeFileSync("global.json", JSON.stringify(config));
+        }
+    }
+
+    async function makeCall(callee) {
+        isCaller = true;
+        var ip = require("ip");
+
+        username = require('./session.json');
+        var callerIP = String(ip.address())
+
+
+        console.log(ip.address());
+
+
+        var apigClient = apigClientFactory.newClient({
+            apiKey: 'API_KEY_FOR_AWS_LAMBDA',
+            region: 'LAMBDA_REGION'
+        });
+        var body = {
+            "caller": username,
+            "callee": callee,
+            "ip": callerIP
+        }
+        console.log(body);
+        apigClient.makecallPost({}, body, {})
+            .then(async function (result) {
+                response = JSON.parse(result.data.body);
+                if (response.result == "success") {
+                    console.log(JSON.parse(data));
+                    const videoBlock = document.getElementById('videoBlock');
+                    videoBlock.style.display = "block";
+                    const videoTag = document.getElementById('localVideo');
+                    videoTag.style.display = "block";
+                    document.getElementById('profile').style.display = "none";
+                    document.getElementById('graphic').style.display = "none";
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    remoteVideo.style.display = "block";
+                    await createSocket();
+                    // console.log(err);
+                    console.log("Error");
+                } else {
+                    //pass
+
+                }
+            }).catch(function (result) {
+                console.log(result);
+            });
+        // var promise = Promise.resolve(fetch(`http://localhost:8080/makecall/jhonnysins?indiasummers?${callerIP}`));
+        // promise.then(function (response) {
+        //     return response.text();
+        // }).then(async function (data) {
+        //     console.log(JSON.parse(data));
+        //     const videoBlock = document.getElementById('videoBlock');
+        //     videoBlock.style.display = "block";
+        //     const videoTag = document.getElementById('localVideo');
+        //     videoTag.style.display = "block";
+        //     document.getElementById('profile').style.display = "none";
+        //     await createSocket();
+        //     // console.log(err);
+        //     console.log("Error");
+        // });
+    }
+    async function createSocket() {
+        io = require('socket.io').listen(80);
+        await io.sockets.on('connection', function (socket) {
+            console.log("Socket Connection Complete");
+            console.log(socket);
+            myPeerConnection = createPeerConnection();
+            var mediaConstraints = {
+                audio: true,
+                video: true
+            };
+            navigator.mediaDevices.getUserMedia(mediaConstraints)
+                .then(function (localStream) {
+                    document.querySelector("video#localVideo").srcObject = localStream;
+                    localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
+                })
+                .catch(handleGetUserMediaError);
+            socket.on('answer', function (message) {
+                console.log("receicved answer ", message);
+                myPeerConnection.setRemoteDescription(message);
+                handleNewICECandidateMsg();
+            });
+            socket.on('icecandidatecallee', function (msg) {
+                console.log("from callee........")
+                console.log(msg);
+                console.log(msg.candidate);
+                var candidate = new RTCIceCandidate(msg);
+                myPeerConnection.addIceCandidate(candidate).catch(function () {
+                    console.log("Error 1");
+                })
+            })
+        });
+
+    }
+    function sendMessage(data) {
+        var channelName = data.channel;
+        var data = data.data;
+        console.log("data.data ", data.data)
+        io.sockets.emit(channelName, data);
+    }
+    function sendMessage1(data) {
+        console.log("sending message srvr");
+        console.log(data[0]);
+        console.log(data[1]);
+        io.sockets.emit(data[0], data[1]);
+    }
+    function createPeerConnection() {
+        turnConfig = require('./turnConfig.json');
+        const USERNAME = turnConfig.username
+        const PASSWORD = turnConfig.password
+        const PORT = turnConfig.port
+        const IP = turnConfig.ip
+        var config = { url: `turn:${IP}:${PORT}`, username: USERNAME, credential: PASSWORD, };
+        const configuration = { 'iceServers': [config] };
+        myPeerConnection = new RTCPeerConnection(configuration);
+        myPeerConnection.onicecandidate = handleICECandidateEvent;
+        myPeerConnection.ontrack = handleTrackEvent;
+        myPeerConnection.onnegotiationneeded = handleNegotiationNeededEvent;
+        myPeerConnection.onremovetrack = handleRemoveTrackEvent;
+        myPeerConnection.oniceconnectionstatechange = handleICEConnectionStateChangeEvent;
+        myPeerConnection.onicegatheringstatechange = handleICEGatheringStateChangeEvent;
+        myPeerConnection.onsignalingstatechange = handleSignalingStateChangeEvent
+        return myPeerConnection;
+    }
+    async function handleNegotiationNeededEvent() {
+        myPeerConnection.createOffer().then(async function (offer) {
+            return myPeerConnection.setLocalDescription(offer);
+        })
+            .then(async function () {
+                console.log("sending message negotiation", myPeerConnection.localDescription);
+                sendMessage1(["message", myPeerConnection.localDescription]);
+                // await waitforanswer();
+                // io.sockets.on('answer', function (message) {
+                //     console.log("receicved answer ", message);
+                //     myPeerConnection.setRemoteDescription(message);
+                //     handleNewICECandidateMsg();
+                // });
+            })
+            .catch(function (err) {
+                console.log("negotiation event error", err);
+            });
+    }
+    async function waitforanswer() {
+        io.sockets.on('answer', function (message) {
+            console.log("receicved answer ", message);
+            myPeerConnection.setRemoteDescription(message);
+            handleNewICECandidateMsg();
+        });
+    }
+    function handleGetUserMediaError(e) {
+        switch (e.name) {
+            case "NotFoundError":
+                console.log("Unable to open your call because no camera and/or microphone" +
+                    "were found.");
+                break;
+            case "SecurityError":
+            case "PermissionDeniedError":
+                // Do nothing; this is the same as the user canceling the call.
+                break;
+            default:
+                console.log("Error opening your camera and/or microphone: ", e.message);
+                break;
+        }
+    }
+    function handleICECandidateEvent(event) {
+        if (event.candidate) {
+            // sendMessage({ "channel": 'icecandidateCaller', "data": event.candidate });
+            sendMessage1(["icecandidateCaller", event.candidate]);
+        }
+    }
+    function handleNewICECandidateMsg() {
+        io.sockets.on('icecandidatecallee', function (msg) {
+            console.log("from callee........")
+            console.log(msg);
+            console.log(msg.candidate);
+            var candidate = new RTCIceCandidate(msg);
+            myPeerConnection.addIceCandidate(candidate).catch(function () {
+                console.log("Error 1");
+            })
+        })
+    }
+    function handleTrackEvent(event) {
+        document.querySelector('video#remoteVideo').srcObject = event.streams[0];
+    }
+    function handleRemoveTrackEvent(event) {
+        var stream = document.querySelector("video#remoteVideo").srcObject;
+        var trackList = stream.getTracks();
+        // if (trackList.length == 0) {
+        //     closeVideoCall();
+        // }
+    }
+    function handleICEConnectionStateChangeEvent(event) {
+        switch (myPeerConnection.iceConnectionState) {
+            case "closed":
+            case "failed":
+            case "disconnected":
+                console.log("ended");
+                endCall();
+                break;
+        }
+    }
+    function handleSignalingStateChangeEvent(event) {
+        switch (myPeerConnection.signalingState) {
+            case "closed":
+                console.log("closed");
+                break;
+        }
+    }
+    function handleICEGatheringStateChangeEvent(event) {
+        // Our sample just logs information to console here,
+        // but you can do whatever you need.
+        console.log("handle gathering state change");
+    }
+</script>
+
+<body onload="checkMode()">
+    <div class="flex-container-row" id="mainBackground" style="background-color: aliceblue;">
+        <div class="flex-container-col" id="sideBackground"
+            style="margin: auto;margin-left: 10px; width: 300px; background-color: #4682B4;border-radius: 5%;">
+            <img id="profile" src="profile.png" height="300px" width="300px"
+                style="display: block;border-radius: 5%;" />
+            <div id="videoBlock" style="display: none;">
+                <video id="localVideo" autoplay height="300px" width="300px" muted>
+            </div>
+            <input type="text" id="search" onkeyup="searchFriend()" placeholder="&nbsp; &nbsp;Search..."
+                style="width: 300px;height: 25px;border-color: aliceblue;" />
+            <ul id="contactList" class="scrollContact">
+            </ul>
+            <ul id="userList" lass="scrollContact">
+            </ul>
+
+        </div>
+        <div class="flex-container-col"
+            style="margin-left: 5px;width: 1500px; background-color: aliceblue;justify-content: center;">
+            <div class="flex-container-row" id="callBackground"
+                style="height: 800px;background-color: aliceblue;justify-content: center;">
+                <!-- fnsdkjfnskdnsdfndsn
+                nfsdlfn
+                <button id="limac" onclick="playVideoFromCamera()">Start LIMAC</button>
+                <button id="limac" onclick="stopPlayback()">Stop LIMAC</button>
+                <button id="call" onclick="makeCall()">check call</button><br /> -->
+                <div id="graphic" style="height: 600px;width: 1000px;margin-top: 100px;border-radius: 20px;">
+                    <div class="loader-container">
+                        <div class="loader">
+                            <div class="loader">
+                                <div class="loader">
+                                    <div class="loader">
+                                        <div class="loader"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <video id="remoteVideo" autoplay height="300px" width="300px"
+                    style="background-color: black;height: 600px;width: 1000px;margin-top: 100px;border-radius: 20px;display: none;"></video>
+                <!-- <div id="temp"
+                    style="background-color: black;height: 600px;width: 1000px;margin-top: 100px;border-radius: 20px;">
+                    &nbsp;
+                </div> -->
+            </div>
+            <div class="flex-container-row" id="callButton"
+                style="background-color: aliceblue;justify-content: center;display: none;">
+                <button id="endCall" onclick="endCall()"
+                    style="font-family: Arial, Helvetica, sans-serif;border-radius: 20px;top: 10px;border-width: 1px;border-color: darkred;background-color: red;height: 40px;width: 150px;justify-content: center;text-align: center;opacity: 70%;">
+                    <strong><b>HANG UP</b></strong>
+                </button>
+            </div>
+            <div class="flex-container-row" id="toggleBackground" style="width: 1250px; background-color: aliceblue;">
+                <label class="switch" style="margin-left: 90%;">
+                    <input id="mode" type="checkbox" onchange="changeMode()">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

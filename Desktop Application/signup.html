@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>VC</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="loginStyle.css" />
+    <script type="text/javascript" src="lib/axios/dist/axios.standalone.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/rollups/hmac-sha256.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/rollups/sha256.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/components/hmac.js"></script>
+    <script type="text/javascript" src="lib/CryptoJS/components/enc-base64.js"></script>
+    <script type="text/javascript" src="lib/url-template/url-template.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/sigV4Client.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/apiGatewayClient.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/simpleHttpClient.js"></script>
+    <script type="text/javascript" src="lib/apiGatewayCore/utils.js"></script>
+    <script type="text/javascript" src="apigClient.js"></script>
+    <link rel="stylesheet" href="./node_modules/bootstrap/dist/css/bootstrap.min.css">
+    <script src="node_modules/socket.io-client/dist/socket.io.js"></script>
+    <script src="./signupScript.js"></script>
+</head>
+<script>
+    function start() {
+        setTimeout(() => {
+            document.getElementById("begin").style.display = "block";
+            document.getElementById("load").style.display = "none";
+        }, 2000)
+    }
+</script>
+
+<body onload="start()">
+    <div class="flex-container-row" style="justify-content:center;">
+        <div id="load" class="flex-container-col">
+            <div class="loader-container">
+                <div class="loader">
+                    <div class="loader">
+                        <div class="loader">
+                            <div class="loader">
+                                <div class="loader"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="begin" class="flex-container-col" style="margin-top: 10px;display: none;">
+            <div class="flex-container-col centered" style="justify-content: center;">
+                <div
+                    style="font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;font-size: x-large;color: azure;">
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;LIMAC</div>
+            </div>
+            <div class="profile-picture centered" style="background-color:darkcyan;margin-top: 30px;">
+                <img src="./profile.png">
+            </div>
+            <div class="flex-container-col centered" style="justify-content: center;margin-top: 30px;">
+                <input type="text" id="username" placeholder="Username" style="text-align: center;" />
+                <input type="password" id="password" placeholder="Password" style="text-align: center;" />
+                <input type="password" id="retypePassword" placeholder="Password" style="text-align: center;" />
+                <button id="login" style="font-family: 'Times New Roman', Times, serif;" onclick="signup()">SIGN
+                    UP</button>
+                <div style="font-size: small;justify-content: center;">&nbsp; &nbsp;
+                    &nbsp; &nbsp;&nbsp; &nbsp;&nbsp; &nbsp;&nbsp;&nbsp; &nbsp;&nbsp; &nbsp;&nbsp; &nbsp;<a href="#"
+                        onclick="back()">BACK</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,7 @@
+{
+    "username": "USER_NAME",
+    "password": "PASSWORD",
+    "port": "PORT",
+    "ip": "IP_ADDRESS",
+    "info": "Configure the usernmae, password, port and IP address of your TURN/STUN server"
+}
